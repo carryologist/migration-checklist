@@ -678,7 +678,9 @@ const SECTIONS = [
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'migration-checklist-v1';
+const API_URL = '/api/checklist';
 let state = loadState();
+let syncing = false;
 
 function loadState() {
   try {
@@ -693,6 +695,40 @@ function loadState() {
 
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+  syncToServer();
+}
+
+// ─── SERVER SYNC ─────────────────────────────────────────────────────────────
+async function syncToServer() {
+  if (syncing) return;
+  syncing = true;
+  try {
+    await fetch(API_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checked: state.checked, timestamps: state.timestamps, lastInteraction: state.lastInteraction })
+    });
+  } catch(e) { /* offline is fine, localStorage still works */ }
+  syncing = false;
+}
+
+async function syncFromServer() {
+  try {
+    const res = await fetch(API_URL);
+    if (!res.ok) return;
+    const remote = await res.json();
+    if (!remote || !remote.lastInteraction) return;
+    // Merge: server wins for checked/timestamps, local wins for collapsed (UI-only)
+    const localTime = state.lastInteraction ? new Date(state.lastInteraction).getTime() : 0;
+    const remoteTime = new Date(remote.lastInteraction).getTime();
+    if (remoteTime > localTime) {
+      state.checked = remote.checked || {};
+      state.timestamps = remote.timestamps || {};
+      state.lastInteraction = remote.lastInteraction;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+      render();
+    }
+  } catch(e) { /* offline is fine */ }
 }
 
 // ─── COLLECT ALL IDS ─────────────────────────────────────────────────────────
@@ -970,6 +1006,12 @@ if (Object.keys(state.collapsed).length === 0) {
   saveState();
 }
 render();
+// Pull latest state from server (merges if server is newer)
+syncFromServer();
+// Re-sync when tab becomes visible again (e.g., switching back from another app)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') syncFromServer();
+});
 </script>
 </body>
 </html>
