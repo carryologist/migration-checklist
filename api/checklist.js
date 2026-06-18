@@ -1,30 +1,18 @@
-const KV_URL = process.env.KV_REST_API_URL;
-const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+import Redis from "ioredis";
+
 const KEY = "checklist-state";
+let redis;
 
-async function kvGet() {
-  const res = await fetch(`${KV_URL}/get/${KEY}`, {
-    headers: { Authorization: `Bearer ${KV_TOKEN}` },
-  });
-  const data = await res.json();
-  // Upstash returns { result: "stringified JSON" | null }
-  return data.result ? JSON.parse(data.result) : null;
-}
-
-async function kvSet(value) {
-  const res = await fetch(`${KV_URL}/set/${KEY}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${KV_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(JSON.stringify(value)),
-  });
-  return res.ok;
+function getRedis() {
+  if (!redis) {
+    const url = process.env.KV_URL || process.env.KV_REDIS_URL;
+    if (!url) throw new Error("No Redis URL configured");
+    redis = new Redis(url, { lazyConnect: true, tls: { rejectUnauthorized: false } });
+  }
+  return redis;
 }
 
 export default async function handler(req, res) {
-  // CORS — allow the app and any agent to call this
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, PUT, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -33,21 +21,20 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  if (!KV_URL || !KV_TOKEN) {
-    return res.status(500).json({ error: "KV store not configured" });
+  let r;
+  try {
+    r = getRedis();
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
   }
 
   // GET — read current state
   if (req.method === "GET") {
-    const state = await kvGet();
-    if (!state) {
-      return res.status(200).json({
-        checked: {},
-        timestamps: {},
-        lastInteraction: null,
-      });
+    const raw = await r.get(KEY);
+    if (!raw) {
+      return res.status(200).json({ checked: {}, timestamps: {}, lastInteraction: null });
     }
-    return res.status(200).json(state);
+    return res.status(200).json(JSON.parse(raw));
   }
 
   // PUT — replace entire state
@@ -61,19 +48,15 @@ export default async function handler(req, res) {
       timestamps: body.timestamps || {},
       lastInteraction: body.lastInteraction || new Date().toISOString(),
     };
-    await kvSet(state);
+    await r.set(KEY, JSON.stringify(state));
     return res.status(200).json(state);
   }
 
   // PATCH — toggle specific items or bulk update
-  // Body: { check: ["s1-i1", "s1-i2"], uncheck: ["s3-i1"] }
   if (req.method === "PATCH") {
     const body = req.body;
-    let state = (await kvGet()) || {
-      checked: {},
-      timestamps: {},
-      lastInteraction: null,
-    };
+    const raw = await r.get(KEY);
+    let state = raw ? JSON.parse(raw) : { checked: {}, timestamps: {}, lastInteraction: null };
     const now = new Date().toISOString();
 
     if (body.check && Array.isArray(body.check)) {
@@ -93,7 +76,7 @@ export default async function handler(req, res) {
     }
 
     state.lastInteraction = now;
-    await kvSet(state);
+    await r.set(KEY, JSON.stringify(state));
     return res.status(200).json(state);
   }
 
