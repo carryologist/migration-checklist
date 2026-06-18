@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Homelab Migration Checklist — ATX → SFF Custom Loop</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Migration">
+<meta name="theme-color" content="#0d1117">
+<link rel="manifest" href="manifest.json">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d1117;--card:#161b22;--card-hover:#1c2129;
+    --accent:#58a6ff;--success:#3fb950;--warning:#d29922;--danger:#f85149;
+    --text:#c9d1d9;--muted:#8b949e;--border:#30363d;
+    --radius:8px;--transition:0.3s cubic-bezier(.4,0,.2,1);
+  }
+  html{font-size:16px;scroll-behavior:smooth}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif,'Apple Color Emoji','Segoe UI Emoji';
+    background:var(--bg);color:var(--text);line-height:1.6;
+    min-height:100vh;padding:0;
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar{width:8px}
+  ::-webkit-scrollbar-track{background:var(--bg)}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+
+  /* LAYOUT */
+  .container{max-width:900px;margin:0 auto;padding:1.5rem 1rem 4rem}
+
+  /* HEADER */
+  .header{text-align:center;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
+  .header h1{
+    font-size:clamp(1.4rem,4vw,2rem);font-weight:700;
+    background:linear-gradient(135deg,var(--accent),var(--success));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    background-clip:text;letter-spacing:-.02em;margin-bottom:.35rem;
+  }
+  .header .subtitle{color:var(--muted);font-size:.9rem;font-weight:400;margin-bottom:.25rem}
+  .header .subtitle code{
+    background:var(--card);padding:2px 6px;border-radius:4px;font-size:.82rem;
+    color:var(--text);border:1px solid var(--border);
+  }
+
+  /* SYSTEM SUMMARY CARD */
+  .system-summary{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    margin-bottom:1.5rem;overflow:hidden;
+  }
+  .system-summary-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:.75rem 1rem;cursor:pointer;user-select:none;
+    transition:background var(--transition);
+  }
+  .system-summary-header:hover{background:var(--card-hover)}
+  .system-summary-header h3{font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+  .system-summary-header .chevron{
+    color:var(--muted);transition:transform var(--transition);font-size:.85rem;
+  }
+  .system-summary-header.collapsed .chevron{transform:rotate(-90deg)}
+  .system-summary-body{padding:0 1rem 1rem;overflow:hidden;transition:max-height var(--transition),opacity var(--transition);max-height:600px;opacity:1}
+  .system-summary-body.collapsed{max-height:0;opacity:0;padding:0 1rem}
+  .hw-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:.5rem}
+  .hw-col h4{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem}
+  .hw-col h4 .arrow{color:var(--danger);font-weight:700}
+  .hw-col h4 .arrow.to{color:var(--success)}
+  .hw-row{display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid rgba(48,54,61,.5);font-size:.82rem}
+  .hw-row:last-child{border-bottom:none}
+  .hw-label{color:var(--muted)}
+  .hw-value{color:var(--text);font-weight:500;text-align:right}
+  @media(max-width:600px){.hw-grid{grid-template-columns:1fr}}
+
+  /* TOOLBAR */
+  .toolbar{
+    display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;
+    margin-bottom:1.25rem;
+  }
+  .search-box{
+    flex:1;min-width:200px;
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:.55rem .75rem;color:var(--text);font-size:.85rem;outline:none;
+    transition:border-color var(--transition);
+  }
+  .search-box::placeholder{color:var(--muted)}
+  .search-box:focus{border-color:var(--accent)}
+  .btn{
+    padding:.5rem 1rem;border:1px solid var(--border);border-radius:var(--radius);
+    background:var(--card);color:var(--text);font-size:.8rem;font-weight:500;
+    cursor:pointer;transition:all var(--transition);white-space:nowrap;
+  }
+  .btn:hover{background:var(--card-hover);border-color:var(--muted)}
+  .btn.danger{border-color:rgba(248,81,73,.3);color:var(--danger)}
+  .btn.danger:hover{background:rgba(248,81,73,.1);border-color:var(--danger)}
+
+  /* PROGRESS BAR */
+  .progress-container{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:1rem 1.25rem;margin-bottom:1.25rem;
+  }
+  .progress-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem}
+  .progress-header .label{font-size:.85rem;font-weight:600}
+  .progress-header .pct{font-size:1.1rem;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+  .progress-track{height:10px;background:var(--bg);border-radius:5px;overflow:hidden}
+  .progress-fill{
+    height:100%;border-radius:5px;
+    background:linear-gradient(90deg,var(--accent),var(--success));
+    transition:width .6s cubic-bezier(.4,0,.2,1);width:0;
+  }
+  .progress-stats{display:flex;justify-content:space-between;margin-top:.5rem;font-size:.75rem;color:var(--muted)}
+
+  /* TIMESTAMP */
+  .last-updated{text-align:center;font-size:.75rem;color:var(--muted);margin-bottom:1.25rem}
+  .last-updated time{color:var(--text)}
+
+  /* SECTIONS */
+  .section{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    margin-bottom:.75rem;overflow:hidden;
+    transition:box-shadow var(--transition);
+  }
+  .section:hover{box-shadow:0 0 0 1px rgba(88,166,255,.08)}
+  .section-header{
+    display:flex;align-items:center;gap:.75rem;
+    padding:.85rem 1rem;cursor:pointer;user-select:none;
+    transition:background var(--transition);
+  }
+  .section-header:hover{background:var(--card-hover)}
+  .section-num{
+    width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;font-size:.75rem;font-weight:700;flex-shrink:0;
+    background:rgba(88,166,255,.12);color:var(--accent);
+    transition:all var(--transition);
+  }
+  .section.complete .section-num{background:rgba(63,185,80,.15);color:var(--success)}
+  .section-title-area{flex:1;min-width:0}
+  .section-title{font-size:.92rem;font-weight:600;line-height:1.3}
+  .section-progress-text{font-size:.72rem;color:var(--muted);margin-top:.15rem;font-variant-numeric:tabular-nums}
+  .section-mini-bar{width:80px;height:4px;background:var(--bg);border-radius:2px;flex-shrink:0}
+  .section-mini-fill{height:100%;border-radius:2px;background:var(--accent);transition:width .4s ease}
+  .section.complete .section-mini-fill{background:var(--success)}
+  .section-chevron{
+    color:var(--muted);transition:transform var(--transition);font-size:.85rem;flex-shrink:0;
+  }
+  .section-header.collapsed .section-chevron{transform:rotate(-90deg)}
+  .section-body{
+    padding:0 1rem 0 1rem;overflow:hidden;
+    transition:max-height .4s cubic-bezier(.4,0,.2,1),padding .3s ease,opacity .3s ease;
+    max-height:3000px;opacity:1;padding-bottom:.75rem;
+  }
+  .section-body.collapsed{max-height:0;opacity:0;padding-bottom:0}
+
+  /* CHECKLIST ITEMS */
+  .check-item{
+    display:flex;align-items:flex-start;gap:.6rem;
+    padding:.5rem .5rem;border-radius:6px;
+    transition:background var(--transition);position:relative;
+  }
+  .check-item:hover{background:rgba(88,166,255,.04)}
+  .check-item.sub{margin-left:1.8rem}
+  .check-item.checked .item-text{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--border)}
+  .check-item.checked .item-text strong{color:var(--muted)}
+  .check-item .cb{
+    appearance:none;-webkit-appearance:none;
+    width:22px;height:22px;min-width:22px;border:2px solid var(--border);
+    border-radius:5px;cursor:pointer;position:relative;
+    transition:all var(--transition);margin-top:1px;background:transparent;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .check-item .cb:hover{border-color:var(--accent)}
+  .check-item .cb:checked{background:var(--success);border-color:var(--success)}
+  .check-item .cb:checked::after{
+    content:'✓';position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);color:#fff;font-size:14px;font-weight:700;
+  }
+  .item-text{font-size:.85rem;flex:1;min-width:0}
+  .item-text strong{color:var(--text);font-weight:600}
+  .item-text code{
+    background:rgba(88,166,255,.1);padding:1px 5px;border-radius:3px;
+    font-size:.78rem;color:var(--accent);word-break:break-all;
+  }
+  .item-detail{color:var(--muted);font-size:.8rem;margin-top:.2rem;line-height:1.5}
+  .item-timestamp{font-size:.68rem;color:var(--muted);margin-left:auto;white-space:nowrap;opacity:0;transition:opacity var(--transition)}
+  .check-item.checked .item-timestamp{opacity:1}
+
+  /* CALLOUTS */
+  .callout{
+    margin:.35rem 0 .35rem 2.4rem;padding:.5rem .75rem;
+    border-radius:6px;font-size:.8rem;line-height:1.5;
+    border-left:3px solid;
+  }
+  .callout.info{border-color:var(--accent);background:rgba(88,166,255,.06);color:var(--accent)}
+  .callout.warning{border-color:var(--warning);background:rgba(210,153,34,.06);color:var(--warning)}
+  .callout.danger{border-color:var(--danger);background:rgba(248,81,73,.08);color:var(--danger)}
+  .callout.note{border-color:var(--muted);background:rgba(139,148,158,.06);color:var(--muted)}
+  .callout-label{font-weight:700;text-transform:uppercase;font-size:.7rem;letter-spacing:.04em;margin-right:.3rem}
+
+  /* MODAL */
+  .modal-overlay{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
+    z-index:1000;align-items:center;justify-content:center;
+    backdrop-filter:blur(4px);
+  }
+  .modal-overlay.visible{display:flex}
+  .modal{
+    background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:2rem;max-width:400px;width:90%;text-align:center;
+    animation:modalIn .25s ease;
+  }
+  @keyframes modalIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+  .modal h3{margin-bottom:.75rem;font-size:1.1rem}
+  .modal p{color:var(--muted);font-size:.85rem;margin-bottom:1.5rem}
+  .modal-actions{display:flex;gap:.75rem;justify-content:center}
+  .modal .btn{min-width:100px}
+
+  /* PRINT */
+  @media print{
+    body{background:#fff;color:#000;font-size:11pt}
+    .container{max-width:100%;padding:0}
+    .toolbar,.btn,.search-box,.modal-overlay,.last-updated,.progress-container{display:none!important}
+    .section{break-inside:avoid;border:1px solid #ccc;margin-bottom:6pt}
+    .section-body,.section-body.collapsed{max-height:none!important;opacity:1!important;padding-bottom:8pt!important;overflow:visible!important}
+    .section-chevron{display:none}
+    .system-summary-body,.system-summary-body.collapsed{max-height:none!important;opacity:1!important;padding-bottom:8pt!important;overflow:visible!important}
+    .check-item .cb{border:2px solid #333}
+    .check-item .cb:checked{background:#3fb950;border-color:#3fb950}
+    .callout{border-left:3px solid #888;background:#f5f5f5;color:#333}
+    .item-timestamp{opacity:1!important;color:#666}
+    .header h1{-webkit-text-fill-color:#000;color:#000;background:none}
+    .header .subtitle{color:#555}
+    .progress-fill{background:#58a6ff!important}
+    ::-webkit-scrollbar{display:none}
+  }
+
+  /* MOBILE */
+  @media(max-width:600px){
+    .container{padding:1rem .75rem 3rem}
+    .section-header{padding:.85rem .75rem}
+    .check-item{padding:.55rem .25rem;min-height:44px}
+    .check-item.sub{margin-left:1.2rem}
+    .callout{margin-left:1.5rem}
+    .section-mini-bar{width:50px}
+    .btn{padding:.6rem .85rem;font-size:.82rem}
+    .toolbar{gap:.4rem}
+  }
+
+  /* iOS safe area */
+  @supports(padding: env(safe-area-inset-bottom)){
+    .container{padding-bottom:calc(4rem + env(safe-area-inset-bottom))}
+  }
+
+  /* SEARCH HIGHLIGHT */
+  .highlight{background:rgba(88,166,255,.2);border-radius:2px;padding:0 1px}
+  .section.search-hidden{display:none}
+  .check-item.search-hidden{display:none}
+</style>
+</head>
+<body>
+
+<div class="container" id="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>Homelab Migration Checklist — ATX → SFF Custom Loop</h1>
+    <div class="subtitle">AI-NT-No-Problem &nbsp;|&nbsp; <code>Hardline Nexus Morph R2</code> &nbsp;|&nbsp; Ryzen 9 9950X3D + RTX 5090</div>
+  </div>
+
+  <!-- SYSTEM SUMMARY -->
+  <div class="system-summary">
+    <div class="system-summary-header" id="summaryToggle" onclick="toggleSummary()">
+      <h3>⚙ System Configuration — Before / After</h3>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="system-summary-body" id="summaryBody">
+      <div class="hw-grid">
+        <div class="hw-col">
+          <h4><span class="arrow">●</span> Before (ATX)</h4>
+          <div class="hw-row"><span class="hw-label">Board</span><span class="hw-value">ASRock X870 Pro-A WiFi</span></div>
+          <div class="hw-row"><span class="hw-label">Form Factor</span><span class="hw-value">ATX</span></div>
+          <div class="hw-row"><span class="hw-label">CPU</span><span class="hw-value">Ryzen 9 9950X3D</span></div>
+          <div class="hw-row"><span class="hw-label">RAM</span><span class="hw-value">2×32GB DDR5 6000 (SK Hynix)</span></div>
+          <div class="hw-row"><span class="hw-label">GPU</span><span class="hw-value">RTX 5090</span></div>
+          <div class="hw-row"><span class="hw-label">NVMe 0</span><span class="hw-value">Samsung 9100 PRO 2TB</span></div>
+          <div class="hw-row"><span class="hw-label">NVMe 1</span><span class="hw-value">Crucial P510 2TB</span></div>
+          <div class="hw-row"><span class="hw-label">Cooling</span><span class="hw-value">360mm AIO</span></div>
+          <div class="hw-row"><span class="hw-label">NIC</span><span class="hw-value">Realtek r8169</span></div>
+          <div class="hw-row"><span class="hw-label">Case</span><span class="hw-value">ATX Tower</span></div>
+        </div>
+        <div class="hw-col">
+          <h4><span class="arrow to">●</span> After (SFF)</h4>
+          <div class="hw-row"><span class="hw-label">Board</span><span class="hw-value">Asus ROG Strix X870-i</span></div>
+          <div class="hw-row"><span class="hw-label">Form Factor</span><span class="hw-value">Mini-ITX</span></div>
+          <div class="hw-row"><span class="hw-label">CPU</span><span class="hw-value">Ryzen 9 9950X3D</span></div>
+          <div class="hw-row"><span class="hw-label">RAM</span><span class="hw-value">2×32GB DDR5 6000 (SK Hynix)</span></div>
+          <div class="hw-row"><span class="hw-label">GPU</span><span class="hw-value">RTX 5090</span></div>
+          <div class="hw-row"><span class="hw-label">NVMe 0</span><span class="hw-value">Samsung 9100 PRO 2TB</span></div>
+          <div class="hw-row"><span class="hw-label">NVMe 1</span><span class="hw-value">Crucial P510 2TB</span></div>
+          <div class="hw-row"><span class="hw-label">Cooling</span><span class="hw-value">Custom Loop (2×240 + D5)</span></div>
+          <div class="hw-row"><span class="hw-label">NIC</span><span class="hw-value">Intel I226-V 2.5GbE</span></div>
+          <div class="hw-row"><span class="hw-label">Case</span><span class="hw-value">Hardline Nexus Morph R2</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div class="progress-container">
+    <div class="progress-header">
+      <span class="label">Overall Progress</span>
+      <span class="pct" id="totalPct">0%</span>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="totalBar"></div></div>
+    <div class="progress-stats">
+      <span id="totalChecked">0 of 0 tasks</span>
+      <span id="totalSections">0 sections complete</span>
+    </div>
+  </div>
+
+  <!-- LAST UPDATED -->
+  <div class="last-updated" id="lastUpdated">No interactions yet</div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <input type="text" class="search-box" id="searchBox" placeholder="Search checklist items..." oninput="handleSearch()">
+    <button class="btn" onclick="expandAll()">Expand All</button>
+    <button class="btn" onclick="collapseAll()">Collapse All</button>
+    <button class="btn" onclick="window.print()">🖨 Print</button>
+    <button class="btn danger" onclick="showResetModal()">Reset All</button>
+  </div>
+
+  <!-- SECTIONS CONTAINER -->
+  <div id="sections"></div>
+</div>
+
+<!-- RESET MODAL -->
+<div class="modal-overlay" id="resetModal">
+  <div class="modal">
+    <h3>Reset All Progress?</h3>
+    <p>This will uncheck every item and clear all timestamps. This action cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn" onclick="hideResetModal()">Cancel</button>
+      <button class="btn danger" onclick="resetAll()">Reset Everything</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const SECTIONS = [
+{
+  num: 1,
+  title: "Pre-Migration — Backups & Documentation",
+  subtitle: "Before touching hardware",
+  items: [
+    { id:"s1-i1", text:"<strong>Export current BIOS settings</strong>", subs:[
+      { id:"s1-i1-sub1", text:"Screenshot or note: EXPO profile (6000 MT/s), ReBAR enabled, Above 4G Decoding, Secure Boot state, boot order" },
+      { id:"s1-i1-sub2", text:"Current board: ASRock X870 Pro-A WiFi, BIOS 4.10" }
+    ]},
+    { id:"s1-i2", text:"<strong>Document current disk layout</strong>", subs:[
+      { id:"s1-i2-sub1", text:"Run: <code>lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT,MODEL</code>" },
+      { id:"s1-i2-sub2", text:"NVMe 0 (Samsung 9100 PRO 2TB): nvme0n1p1 = 1.8T root (ext4), nvme0n1p2 = 1G EFI" },
+      { id:"s1-i2-sub3", text:"NVMe 1 (Crucial P510 2TB): Windows partition (unmounted in Linux)" }
+    ]},
+    { id:"s1-i3", text:"<strong>Backup /etc/fstab</strong>", subs:[
+      { id:"s1-i3-sub1", text:"<code>cp /etc/fstab ~/fstab.backup.$(date +%Y%m%d)</code>" },
+      { id:"s1-i3-sub2", text:"Verify UUIDs match: <code>blkid</code>" }
+    ]},
+    { id:"s1-i4", text:"<strong>Backup netplan config</strong>", subs:[
+      { id:"s1-i4-sub1", text:"<code>cp /etc/netplan/*.yaml ~/netplan-backup/</code>" },
+      { id:"s1-i4-sub2", text:"Current NIC: Realtek r8169 — will change to Intel 2.5GbE on new board" }
+    ]},
+    { id:"s1-i5", text:"<strong>Backup critical service configs</strong>", subs:[
+      { id:"s1-i5-sub1", text:"llama.cpp launch scripts/systemd units" },
+      { id:"s1-i5-sub2", text:"Coder server config (<code>~/.config/coderv2/</code> or systemd)" },
+      { id:"s1-i5-sub3", text:"Tailscale: <code>sudo tailscale status</code> (note hostname, exit node config)" },
+      { id:"s1-i5-sub4", text:"Cloudflare tunnel config (<code>~/.cloudflared/</code>)" },
+      { id:"s1-i5-sub5", text:"RustDesk ID and config" },
+      { id:"s1-i5-sub6", text:"Docker compose files / container list: <code>docker ps -a --format \"table {{.Names}}\\t{{.Image}}\\t{{.Status}}\"</code>" }
+    ]},
+    { id:"s1-i6", text:"<strong>Export Tailscale machine identity</strong>", callout:{ type:"info", text:"Tailscale should reconnect automatically with same machine key, but document <code>sudo tailscale status</code> output" }},
+    { id:"s1-i7", text:"<strong>Record baseline thermal results</strong>", callout:{ type:"info", text:"Baseline already captured at <code>~/thermal-tests/before/</code> (2,726 readings, 50-min run). Key numbers: CPU Tctl max 77.8°C (combined), GPU max 66°C at 386W, NVMe0 max 70°C" }},
+    { id:"s1-i8", text:"<strong>Verify thermal test script is backed up</strong>", subs:[
+      { id:"s1-i8-sub1", text:"<code>~/thermal-test.sh</code> should also exist in GitHub: <code>carryologist/the-vibe-coder-content</code>" }
+    ]},
+    { id:"s1-i9", text:"<strong>Back up SSH keys and authorized_keys</strong>", subs:[
+      { id:"s1-i9-sub1", text:"<code>cp -r ~/.ssh ~/ssh-backup-$(date +%Y%m%d)</code>" }
+    ]}
+  ]
+},
+{
+  num: 2,
+  title: "Pre-Migration — Software Preparation",
+  items: [
+    { id:"s2-i1", text:"<strong>Download Asus ROG Strix X870-i BIOS</strong>", subs:[
+      { id:"s2-i1-sub1", text:"Get latest BIOS from Asus support site for ROG Strix X870-I GAMING WIFI" },
+      { id:"s2-i1-sub2", text:"Copy to FAT32-formatted USB drive for BIOS Flashback" }
+    ]},
+    { id:"s2-i2", text:"<strong>Prepare Windows: DDU for NVIDIA driver</strong>", callout:{ type:"warning", text:"Do this BEFORE moving NVMe to new board" }, subs:[
+      { id:"s2-i2-sub1", text:"Boot into Windows on the Crucial P510 drive" },
+      { id:"s2-i2-sub2", text:"Download DDU (Display Driver Uninstaller) and latest NVIDIA driver" },
+      { id:"s2-i2-sub3", text:"Run DDU in Safe Mode → "Clean and shutdown"" },
+      { id:"s2-i2-sub4", text:"This prevents BSOD from driver mismatch when booting on new motherboard" }
+    ]},
+    { id:"s2-i3", text:"<strong>Check Windows BitLocker status</strong>", subs:[
+      { id:"s2-i3-sub1", text:"In Windows: <code>manage-bde -status C:</code>" },
+      { id:"s2-i3-sub2", text:"If BitLocker is ON: suspend BitLocker before migration (<code>manage-bde -protectors -disable C:</code>)" },
+      { id:"s2-i3-sub3", text:"If OFF: no action needed" }
+    ]},
+    { id:"s2-i4", text:"<strong>Check Linux disk encryption status</strong>", subs:[
+      { id:"s2-i4-sub1", text:"Run: <code>lsblk -o NAME,FSTYPE | grep -i luks</code> and <code>sudo dmsetup ls</code>" }
+    ], callout:{ type:"info", text:"No LUKS encryption detected on this system during baseline — likely not applicable" }},
+    { id:"s2-i5", text:"<strong>Install <code>sensors-detect</code> prerequisites</strong>", subs:[
+      { id:"s2-i5-sub1", text:"Ensure lm-sensors is installed: <code>sudo apt install lm-sensors</code> (already installed)" },
+      { id:"s2-i5-sub2", text:"Note: Will need to re-run <code>sudo sensors-detect</code> after board swap for new Super I/O chip" }
+    ]},
+    { id:"s2-i6", text:"<strong>Prepare netplan config for Intel NIC</strong>", subs:[
+      { id:"s2-i6-sub1", text:"Draft updated netplan YAML replacing Realtek interface name with expected Intel interface" },
+      { id:"s2-i6-sub2", text:"New board has Intel I226-V 2.5GbE — will likely enumerate as <code>enp*</code> but different name" },
+      { id:"s2-i6-sub3", text:"Have config ready but don't apply until post-boot" }
+    ]}
+  ]
+},
+{
+  num: 3,
+  title: "Hardware Disassembly (Old Case)",
+  items: [
+    { id:"s3-i1", text:"<strong>Shut down and unplug system</strong>", subs:[
+      { id:"s3-i1-sub1", text:"<code>sudo shutdown -h now</code>" },
+      { id:"s3-i1-sub2", text:"Unplug all cables, hold power button 10s to discharge" }
+    ]},
+    { id:"s3-i2", text:"<strong>Photograph cable routing and connections</strong>", subs:[
+      { id:"s3-i2-sub1", text:"Take photos of: front panel headers, fan headers, USB headers, SATA (if any), 24-pin, CPU 8-pin, GPU power" }
+    ]},
+    { id:"s3-i3", text:"<strong>Remove GPU (RTX 5090)</strong>", subs:[
+      { id:"s3-i3-sub1", text:"Release PCIe latch, disconnect power cables" },
+      { id:"s3-i3-sub2", text:"Store in anti-static bag" }
+    ]},
+    { id:"s3-i4", text:"<strong>Drain and remove AIO cooler</strong>", subs:[
+      { id:"s3-i4-sub1", text:"Remove radiator (360mm) and fans" },
+      { id:"s3-i4-sub2", text:"Carefully detach CPU block — twist gently, don't pull straight up (can damage AM5 pins)" },
+      { id:"s3-i4-sub3", text:"Note: AIO is being replaced entirely by custom loop" }
+    ]},
+    { id:"s3-i5", text:"<strong>Remove NVMe drives</strong>", subs:[
+      { id:"s3-i5-sub1", text:"NVMe 0 (Samsung 9100 PRO 2TB) — label it! This is your Ubuntu boot drive" },
+      { id:"s3-i5-sub2", text:"NVMe 1 (Crucial P510 2TB) — label it! This is your Windows drive" },
+      { id:"s3-i5-sub3", text:"Note which slot each was in on the ASRock board" }
+    ]},
+    { id:"s3-i6", text:"<strong>Remove RAM (2×32GB DDR5 SK Hynix)</strong>", subs:[
+      { id:"s3-i6-sub1", text:"Release clips, store in anti-static packaging" }
+    ], callout:{ type:"note", text:"RAM is SK Hynix (not G.Skill) — EXPO profile at 6000 MT/s" }},
+    { id:"s3-i7", text:"<strong>Remove motherboard from ATX case</strong>", subs:[
+      { id:"s3-i7-sub1", text:"Disconnect all remaining headers" },
+      { id:"s3-i7-sub2", text:"Remove standoff screws" },
+      { id:"s3-i7-sub3", text:"Lift out carefully" }
+    ]}
+  ]
+},
+{
+  num: 4,
+  title: "Custom Water-Cooling Loop Assembly",
+  items: [
+    { id:"s4-i1", text:"<strong>Install Thermal Grizzly AM5 contact frame on CPU</strong>", subs:[
+      { id:"s4-i1-sub1", text:"Replace stock AMD ILM with Thermal Grizzly contact frame" },
+      { id:"s4-i1-sub2", text:"This improves thermal transfer by flattening the IHS" },
+      { id:"s4-i1-sub3", text:"Do this BEFORE mounting the motherboard in the case (easier access)" }
+    ]},
+    { id:"s4-i2", text:"<strong>Mount Asus ROG Strix X870-i in Hardline Nexus Morph R2</strong>", subs:[
+      { id:"s4-i2-sub1", text:"Install I/O shield (if separate), then motherboard standoffs" },
+      { id:"s4-i2-sub2", text:"Secure motherboard with appropriate screws" }
+    ]},
+    { id:"s4-i3", text:"<strong>Install NVMe drives in correct slots</strong>", subs:[
+      { id:"s4-i3-sub1", text:"Samsung 9100 PRO 2TB → M.2_1 slot (CPU-direct, PCIe 5.0 x4)" },
+      { id:"s4-i3-sub2", text:"Crucial P510 2TB → M.2_2 slot (chipset, PCIe 4.0 x4)" },
+      { id:"s4-i3-sub3", text:"Apply M.2 heatsink thermal pads (check if Asus includes them or use aftermarket)" }
+    ], callout:{ type:"warning", text:"Check Asus manual for M.2 slot locations — Mini-ITX layout differs from ATX" }},
+    { id:"s4-i4", text:"<strong>Install RAM</strong>", subs:[
+      { id:"s4-i4-sub1", text:"2×32GB SK Hynix DDR5 in the two DIMM slots (Mini-ITX only has 2 slots — simple)" },
+      { id:"s4-i4-sub2", text:"Ensure clicks on both sides" }
+    ]},
+    { id:"s4-i5", text:"<strong>Install Alphacool Core 1 CPU water block</strong>", subs:[
+      { id:"s4-i5-sub1", text:"Apply thermal paste (or use included thermal interface)" },
+      { id:"s4-i5-sub2", text:"Mount block with AM5 mounting hardware" },
+      { id:"s4-i5-sub3", text:"Note inlet/outlet orientation for loop planning" }
+    ]},
+    { id:"s4-i6", text:"<strong>Install GPU (RTX 5090) with Alphacool Core water block</strong>", callout:{ type:"warning", text:"If the Alphacool Core RTX 5090 block is not pre-installed, you must disassemble the GPU and mount the water block first" }, subs:[
+      { id:"s4-i6-sub1", text:"Apply KryoSheet thermal pad to GPU die (as specified in BOM)" },
+      { id:"s4-i6-sub2", text:"Apply thermal pads to VRAM and VRM as specified in block instructions" },
+      { id:"s4-i6-sub3", text:"Mount block, reconnect power cables" },
+      { id:"s4-i6-sub4", text:"Install in PCIe x16 slot" }
+    ]},
+    { id:"s4-i7", text:"<strong>Mount radiators (2× Alphacool NexXxoS HPE-30 240mm)</strong>", subs:[
+      { id:"s4-i7-sub1", text:"Both are 30mm slim radiators — verify case mounting positions in Morph R2" },
+      { id:"s4-i7-sub2", text:"Mount 6× Alphacool Apex Stealth Metal Aurora 120mm fans in push-only config" },
+      { id:"s4-i7-sub3", text:"Fans rated 2600 RPM max — set up fan curve later in BIOS/software" }
+    ]},
+    { id:"s4-i8", text:"<strong>Install Alphacool VPP Apex D5 pump/reservoir</strong>", subs:[
+      { id:"s4-i8-sub1", text:"Mount in designated pump location in case" },
+      { id:"s4-i8-sub2", text:"Connect pump power (SATA or fan header, check pump requirements)" }
+    ]},
+    { id:"s4-i9", text:"<strong>Plan and install Corsair 14mm hardline tubing (satin white)</strong>", callout:{ type:"warning", text:"Plan your loop order BEFORE cutting tubes. Dry-fit everything first." }, subs:[
+      { id:"s4-i9-sub1", text:"Loop order recommendation: Pump → CPU block → Radiator 1 → GPU block → Radiator 2 → Reservoir/Pump" },
+      { id:"s4-i9-sub2", text:"Measure, cut, and bend hardline tubes" },
+      { id:"s4-i9-sub3", text:"Use appropriate Alphacool fittings for 14mm OD hardline" }
+    ]},
+    { id:"s4-i10", text:"<strong>Fill loop with Alphacool Apex Liquid ECO coolant</strong>", subs:[
+      { id:"s4-i10-sub1", text:"Fill reservoir, power on pump ONLY (jump PSU 24-pin or use pump standalone power)" },
+      { id:"s4-i10-sub2", text:"Do NOT power on the full system yet" },
+      { id:"s4-i10-sub3", text:"Top off reservoir as air bleeds out" },
+      { id:"s4-i10-sub4", text:"Run pump for 15-30 minutes while tilting case to purge air bubbles" }
+    ]},
+    { id:"s4-i11", text:"<strong>Leak test (CRITICAL)</strong>", callout:{ type:"danger", text:"Run pump for 12-24 hours with paper towels under every fitting. Inspect ALL fittings, especially hardline connections. Do NOT proceed until zero leaks confirmed. Alternative: Use a leak tester tool (air pressure) if available." }},
+    { id:"s4-i12", text:"<strong>Connect all power cables</strong>", subs:[
+      { id:"s4-i12-sub1", text:"24-pin ATX, CPU 8-pin (check if X870-i needs 4+4 or 8+4), GPU power cables" },
+      { id:"s4-i12-sub2", text:"Front panel connectors (power, reset, LED, USB, audio)" },
+      { id:"s4-i12-sub3", text:"Fan headers for radiator fans (check available fan headers on Mini-ITX board)" }
+    ]}
+  ]
+},
+{
+  num: 5,
+  title: "First Boot & BIOS Configuration",
+  items: [
+    { id:"s5-i1", text:"<strong>Flash BIOS via USB Flashback (BEFORE first boot)</strong>", subs:[
+      { id:"s5-i1-sub1", text:"Asus ROG Strix X870-i supports BIOS Flashback — flash latest BIOS from USB" },
+      { id:"s5-i1-sub2", text:"This ensures compatibility with Ryzen 9950X3D before attempting to POST" }
+    ]},
+    { id:"s5-i2", text:"<strong>First POST — enter BIOS immediately</strong>", subs:[
+      { id:"s5-i2-sub1", text:"Press DEL or F2 on startup" },
+      { id:"s5-i2-sub2", text:"Verify CPU, RAM, and NVMe drives are detected" }
+    ]},
+    { id:"s5-i3", text:"<strong>Configure BIOS settings</strong>", subs:[
+      { id:"s5-i3-sub1", text:"Enable EXPO profile → DDR5 6000 MT/s (same as before)" },
+      { id:"s5-i3-sub2", text:"Enable Resizable BAR (ReBAR)" },
+      { id:"s5-i3-sub3", text:"Enable Above 4G Decoding" },
+      { id:"s5-i3-sub4", text:"Set Secure Boot: Enabled (required for NVIDIA MOK-signed drivers on Ubuntu)" },
+      { id:"s5-i3-sub5", text:"Set boot order: NVMe 0 (Samsung 9100 PRO) first for Ubuntu" },
+      { id:"s5-i3-sub6", text:"Configure fan curves for radiator fans" },
+      { id:"s5-i3-sub7", text:"Set pump header to full speed (D5 pump should run 100%)" }
+    ]}
+  ]
+},
+{
+  num: 6,
+  title: "Linux Post-Migration",
+  items: [
+    { id:"s6-i1", text:"<strong>Boot Ubuntu 24.04 from Samsung NVMe</strong>", subs:[
+      { id:"s6-i1-sub1", text:"Should boot without issues — Ubuntu uses UUIDs in fstab, not device names" },
+      { id:"s6-i1-sub2", text:"If it drops to initramfs: check <code>blkid</code> output, verify root UUID matches fstab" }
+    ]},
+    { id:"s6-i2", text:"<strong>Update netplan for Intel NIC</strong>", subs:[
+      { id:"s6-i2-sub1", text:"Identify new NIC name: <code>ip link show</code> (look for Intel I226-V, likely <code>enp*</code>)" },
+      { id:"s6-i2-sub2", text:"Update <code>/etc/netplan/*.yaml</code> with new interface name" },
+      { id:"s6-i2-sub3", text:"<code>sudo netplan apply</code>" },
+      { id:"s6-i2-sub4", text:"Verify connectivity: <code>ping -c 3 8.8.8.8</code>" }
+    ]},
+    { id:"s6-i3", text:"<strong>Re-run sensors-detect</strong>", subs:[
+      { id:"s6-i3-sub1", text:"<code>sudo sensors-detect</code> — accept defaults, let it probe the new Super I/O chip" },
+      { id:"s6-i3-sub2", text:"This may find VRM/chipset sensors that weren't available on the ASRock board" },
+      { id:"s6-i3-sub3", text:"Verify k10temp, nvidia, nvme sensors still work: <code>sensors</code>" }
+    ]},
+    { id:"s6-i4", text:"<strong>Verify NVIDIA driver and CUDA</strong>", subs:[
+      { id:"s6-i4-sub1", text:"<code>nvidia-smi</code> — should show RTX 5090, driver 590.48.01, CUDA 13.1" },
+      { id:"s6-i4-sub2", text:"If Secure Boot causes issues: re-enroll MOK key" },
+      { id:"s6-i4-sub3", text:"<code>sudo mokutil --list-enrolled</code> to check" },
+      { id:"s6-i4-sub4", text:"If needed: <code>sudo dpkg-reconfigure nvidia-dkms-590</code> (or current version)" },
+      { id:"s6-i4-sub5", text:"Reboot, enroll key at MOK Manager screen" }
+    ]},
+    { id:"s6-i5", text:"<strong>Verify all services</strong>", subs:[
+      { id:"s6-i5-sub1", text:"llama.cpp inference: <code>curl http://localhost:8080/v1/models</code> (should show Qwen3-Coder-30B-A3B)" },
+      { id:"s6-i5-sub2", text:"llama.cpp embeddings: <code>curl http://localhost:8084/v1/models</code>" },
+      { id:"s6-i5-sub3", text:"Coder server: <code>curl http://localhost:3000</code> or check systemd status" },
+      { id:"s6-i5-sub4", text:"Tailscale: <code>sudo tailscale status</code> — verify connected, same hostname" },
+      { id:"s6-i5-sub5", text:"Cloudflare tunnel: <code>cloudflared tunnel list</code> and verify connectivity" },
+      { id:"s6-i5-sub6", text:"Docker: <code>docker ps</code> — check all containers running" },
+      { id:"s6-i5-sub7", text:"RustDesk: verify remote access works" }
+    ]},
+    { id:"s6-i6", text:"<strong>Check NVMe health</strong>", subs:[
+      { id:"s6-i6-sub1", text:"<code>sudo nvme smart-log /dev/nvme0</code> (Samsung)" },
+      { id:"s6-i6-sub2", text:"<code>sudo nvme smart-log /dev/nvme1</code> (Crucial)" },
+      { id:"s6-i6-sub3", text:"Verify temperatures, no errors after migration" }
+    ]},
+    { id:"s6-i7", text:"<strong>Verify pump and fan control</strong>", subs:[
+      { id:"s6-i7-sub1", text:"Check if <code>liquidctl</code> can detect the Alphacool VPP Apex D5 pump" },
+      { id:"s6-i7-sub2", text:"If not, verify pump is running via BIOS fan header control" },
+      { id:"s6-i7-sub3", text:"Check fan RPM readings: <code>sensors | grep -i fan</code>" }
+    ]}
+  ]
+},
+{
+  num: 7,
+  title: "Windows Post-Migration",
+  items: [
+    { id:"s7-i1", text:"<strong>Boot Windows from Crucial P510 NVMe</strong>", subs:[
+      { id:"s7-i1-sub1", text:"Change BIOS boot order temporarily to boot Crucial drive" },
+      { id:"s7-i1-sub2", text:"If DDU was run pre-migration: Windows should boot to basic display driver" }
+    ]},
+    { id:"s7-i2", text:"<strong>Install NVIDIA driver</strong>", subs:[
+      { id:"s7-i2-sub1", text:"Install the fresh NVIDIA driver downloaded earlier" },
+      { id:"s7-i2-sub2", text:"Reboot and verify GPU detected in Device Manager" }
+    ]},
+    { id:"s7-i3", text:"<strong>Re-activate Windows</strong>", subs:[
+      { id:"s7-i3-sub1", text:"Open Settings → Activation" },
+      { id:"s7-i3-sub2", text:"Run activation troubleshooter if it shows "not activated"" },
+      { id:"s7-i3-sub3", text:"Motherboard change may require re-linking Microsoft account" }
+    ]},
+    { id:"s7-i4", text:"<strong>Verify BitLocker status</strong>", subs:[
+      { id:"s7-i4-sub1", text:"If BitLocker was suspended: re-enable with <code>manage-bde -protectors -enable C:</code>" },
+      { id:"s7-i4-sub2", text:"If BitLocker was off: no action" }
+    ]},
+    { id:"s7-i5", text:"<strong>Install Intel NIC driver (if needed)</strong>", subs:[
+      { id:"s7-i5-sub1", text:"Windows should auto-detect Intel I226-V, but download driver from Intel if not" }
+    ]}
+  ]
+},
+{
+  num: 8,
+  title: "Post-Migration — Thermal Validation",
+  items: [
+    { id:"s8-i1", text:"<strong>Run post-migration thermal test</strong>", subs:[
+      { id:"s8-i1-sub1", text:"<code>~/thermal-test.sh --output-dir ~/thermal-tests/after</code>" },
+      { id:"s8-i1-sub2", text:"This runs the identical 50-minute, 6-phase test from baseline" },
+      { id:"s8-i1-sub3", text:"Results saved to <code>~/thermal-tests/after/</code>" }
+    ]},
+    { id:"s8-i2", text:"<strong>Compare before/after results</strong>", subs:[
+      { id:"s8-i2-sub1", text:"Compare <code>~/thermal-tests/before/results.txt</code> vs <code>~/thermal-tests/after/results.txt</code>" },
+      { id:"s8-i2-sub2", text:"CPU Tctl avg/max per phase" },
+      { id:"s8-i2-sub3", text:"GPU temp avg/max per phase" },
+      { id:"s8-i2-sub4", text:"GPU power draw (should be similar — validates block mounting)" },
+      { id:"s8-i2-sub5", text:"NVMe temps (may differ with different heatsink configs)" }
+    ], callout:{ type:"warning", text:"Custom loop with 2×240mm slim rads (push-only) has ~350-400W capacity. Combined CPU+GPU peak is ~580W. Expect higher temps under combined load vs AIO+air baseline." }},
+    { id:"s8-i3", text:"<strong>Establish new fan/pump curves</strong>", subs:[
+      { id:"s8-i3-sub1", text:"Based on thermal test results, optimize:" },
+      { id:"s8-i3-sub2", text:"Radiator fan curves (target: coolant temp-based if sensor available, else CPU temp)" },
+      { id:"s8-i3-sub3", text:"Pump speed (D5 can usually run at 60-80% for less noise unless temps require 100%)" }
+    ]},
+    { id:"s8-i4", text:"<strong>Document final configuration</strong>", subs:[
+      { id:"s8-i4-sub1", text:"Update the thermal test plan with after-migration results" },
+      { id:"s8-i4-sub2", text:"Push updated results to GitHub repo" }
+    ]},
+    { id:"s8-i5", text:"<strong>Update agent skill file</strong>", subs:[
+      { id:"s8-i5-sub1", text:"Update <code>/home/coder/.agents/skills/thermal-test/SKILL.md</code> with new hardware config" },
+      { id:"s8-i5-sub2", text:"New motherboard: Asus ROG Strix X870-i" },
+      { id:"s8-i5-sub3", text:"New cooling: Custom loop details" },
+      { id:"s8-i5-sub4", text:"New NIC: Intel I226-V 2.5GbE" }
+    ]}
+  ]
+},
+{
+  num: 9,
+  title: "Cleanup & Verification",
+  items: [
+    { id:"s9-i1", text:"<strong>Final system verification checklist</strong>", subs:[
+      { id:"s9-i1-sub1", text:"All services responding (llama.cpp, Coder, Tailscale, Cloudflare, Docker, RustDesk)" },
+      { id:"s9-i1-sub2", text:"Network speed: <code>iperf3</code> test on Intel 2.5GbE" },
+      { id:"s9-i1-sub3", text:"RAM running at 6000 MT/s (verify in <code>dmidecode</code> or BIOS)" },
+      { id:"s9-i1-sub4", text:"GPU utilization normal under inference load" },
+      { id:"s9-i1-sub5", text:"No kernel errors: <code>dmesg | grep -i error</code>" },
+      { id:"s9-i1-sub6", text:"No disk errors: <code>sudo smartctl -a /dev/nvme0</code> and <code>nvme1</code>" }
+    ]},
+    { id:"s9-i2", text:"<strong>Stress test the loop under sustained load</strong>", subs:[
+      { id:"s9-i2-sub1", text:"Run combined phase for extended duration: <code>~/thermal-test.sh --phases combined --duration-multiplier 3</code>" },
+      { id:"s9-i2-sub2", text:"This gives 30 minutes of combined CPU+GPU stress" },
+      { id:"s9-i2-sub3", text:"Monitor coolant temps if sensor available — equilibrium expected 45-55°C" },
+      { id:"s9-i2-sub4", text:"Watch for any thermal throttling: <code>watch -n 1 nvidia-smi</code>" }
+    ]},
+    { id:"s9-i3", text:"<strong>Clean up old case and components</strong>", subs:[
+      { id:"s9-i3-sub1", text:"Old AIO cooler — keep as backup or sell" },
+      { id:"s9-i3-sub2", text:"Old case — store or repurpose" },
+      { id:"s9-i3-sub3", text:"Document what's in the old case if keeping anything connected" }
+    ]}
+  ]
+}
+];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'migration-checklist-v1';
+let state = loadState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { checked: parsed.checked || {}, timestamps: parsed.timestamps || {}, collapsed: parsed.collapsed || {}, lastInteraction: parsed.lastInteraction || null };
+    }
+  } catch(e) {}
+  return { checked:{}, timestamps:{}, collapsed:{}, lastInteraction:null };
+}
+
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+// ─── COLLECT ALL IDS ─────────────────────────────────────────────────────────
+function getAllIds() {
+  const ids = [];
+  SECTIONS.forEach(s => {
+    s.items.forEach(item => {
+      ids.push(item.id);
+      if (item.subs) item.subs.forEach(sub => ids.push(sub.id));
+    });
+  });
+  return ids;
+}
+
+function getSectionIds(section) {
+  const ids = [];
+  section.items.forEach(item => {
+    ids.push(item.id);
+    if (item.subs) item.subs.forEach(sub => ids.push(sub.id));
+  });
+  return ids;
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function render() {
+  const container = document.getElementById('sections');
+  container.innerHTML = '';
+  SECTIONS.forEach(section => {
+    const sIds = getSectionIds(section);
+    const checked = sIds.filter(id => state.checked[id]).length;
+    const total = sIds.length;
+    const pct = total ? Math.round((checked / total) * 100) : 0;
+    const isComplete = checked === total && total > 0;
+    const isCollapsed = state.collapsed['section-' + section.num] !== false;
+
+    const el = document.createElement('div');
+    el.className = 'section' + (isComplete ? ' complete' : '');
+    el.dataset.sectionNum = section.num;
+    el.innerHTML = `
+      <div class="section-header ${isCollapsed ? 'collapsed' : ''}" onclick="toggleSection(${section.num})">
+        <div class="section-num">${section.num}</div>
+        <div class="section-title-area">
+          <div class="section-title">${section.title}</div>
+          <div class="section-progress-text">${checked} of ${total} complete${section.subtitle ? ' · ' + section.subtitle : ''}</div>
+        </div>
+        <div class="section-mini-bar"><div class="section-mini-fill" style="width:${pct}%"></div></div>
+        <span class="section-chevron">▼</span>
+      </div>
+      <div class="section-body ${isCollapsed ? 'collapsed' : ''}">
+        ${section.items.map(item => renderItem(item)).join('')}
+      </div>
+    `;
+    container.appendChild(el);
+  });
+  updateProgress();
+  updateLastInteraction();
+}
+
+function renderItem(item) {
+  const isChecked = state.checked[item.id];
+  const ts = state.timestamps[item.id];
+  let html = `<div class="check-item ${isChecked ? 'checked' : ''}" data-id="${item.id}">
+    <input type="checkbox" class="cb" ${isChecked ? 'checked' : ''} onchange="toggleCheck('${item.id}')">
+    <div class="item-text">${item.text}${item.subs ? '' : (item.detail ? '<div class="item-detail">' + item.detail + '</div>' : '')}</div>
+    <span class="item-timestamp">${ts ? formatTs(ts) : ''}</span>
+  </div>`;
+
+  if (item.callout) {
+    const labels = { info:'INFO', warning:'WARNING', danger:'DANGER', note:'NOTE' };
+    html += `<div class="callout ${item.callout.type}"><span class="callout-label">${labels[item.callout.type] || 'NOTE'}:</span> ${item.callout.text}</div>`;
+  }
+
+  if (item.subs) {
+    item.subs.forEach(sub => {
+      const subChecked = state.checked[sub.id];
+      const subTs = state.timestamps[sub.id];
+      html += `<div class="check-item sub ${subChecked ? 'checked' : ''}" data-id="${sub.id}">
+        <input type="checkbox" class="cb" ${subChecked ? 'checked' : ''} onchange="toggleCheck('${sub.id}')">
+        <div class="item-text">${sub.text}</div>
+        <span class="item-timestamp">${subTs ? formatTs(subTs) : ''}</span>
+      </div>`;
+    });
+  }
+  return html;
+}
+
+function formatTs(iso) {
+  const d = new Date(iso);
+  const mon = d.toLocaleDateString('en-US',{month:'short'});
+  const day = d.getDate();
+  const h = d.getHours().toString().padStart(2,'0');
+  const m = d.getMinutes().toString().padStart(2,'0');
+  return `${mon} ${day}, ${h}:${m}`;
+}
+
+// ─── INTERACTIONS ────────────────────────────────────────────────────────────
+function toggleCheck(id) {
+  const now = new Date().toISOString();
+  state.checked[id] = !state.checked[id];
+  if (state.checked[id]) {
+    state.timestamps[id] = now;
+  } else {
+    delete state.timestamps[id];
+  }
+  state.lastInteraction = now;
+  saveState();
+  render();
+}
+
+function toggleSection(num) {
+  const key = 'section-' + num;
+  const current = state.collapsed[key] !== false;
+  state.collapsed[key] = !current;
+  saveState();
+  // Animate without full re-render
+  const section = document.querySelector(`.section[data-section-num="${num}"]`);
+  if (section) {
+    const header = section.querySelector('.section-header');
+    const body = section.querySelector('.section-body');
+    if (state.collapsed[key]) {
+      header.classList.add('collapsed');
+      body.classList.add('collapsed');
+    } else {
+      header.classList.remove('collapsed');
+      body.classList.remove('collapsed');
+    }
+  }
+}
+
+function toggleSummary() {
+  const header = document.getElementById('summaryToggle');
+  const body = document.getElementById('summaryBody');
+  header.classList.toggle('collapsed');
+  body.classList.toggle('collapsed');
+}
+
+function expandAll() {
+  SECTIONS.forEach(s => { state.collapsed['section-' + s.num] = false; });
+  saveState();
+  render();
+}
+
+function collapseAll() {
+  SECTIONS.forEach(s => { state.collapsed['section-' + s.num] = true; });
+  saveState();
+  render();
+}
+
+function showResetModal() { document.getElementById('resetModal').classList.add('visible'); }
+function hideResetModal() { document.getElementById('resetModal').classList.remove('visible'); }
+
+function resetAll() {
+  state = { checked:{}, timestamps:{}, collapsed:{}, lastInteraction:null };
+  saveState();
+  hideResetModal();
+  render();
+}
+
+// ─── PROGRESS ────────────────────────────────────────────────────────────────
+function updateProgress() {
+  const allIds = getAllIds();
+  const total = allIds.length;
+  const checked = allIds.filter(id => state.checked[id]).length;
+  const pct = total ? Math.round((checked / total) * 100) : 0;
+
+  document.getElementById('totalPct').textContent = pct + '%';
+  document.getElementById('totalBar').style.width = pct + '%';
+  document.getElementById('totalChecked').textContent = `${checked} of ${total} tasks`;
+
+  const completeSections = SECTIONS.filter(s => {
+    const ids = getSectionIds(s);
+    return ids.length > 0 && ids.every(id => state.checked[id]);
+  }).length;
+  document.getElementById('totalSections').textContent = `${completeSections} of ${SECTIONS.length} sections complete`;
+
+  // Color the progress bar based on completion
+  const bar = document.getElementById('totalBar');
+  if (pct === 100) {
+    bar.style.background = 'linear-gradient(90deg, var(--success), #2ea043)';
+  } else {
+    bar.style.background = 'linear-gradient(90deg, var(--accent), var(--success))';
+  }
+}
+
+function updateLastInteraction() {
+  const el = document.getElementById('lastUpdated');
+  if (state.lastInteraction) {
+    const d = new Date(state.lastInteraction);
+    const opts = { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' };
+    el.innerHTML = 'Last interaction: <time>' + d.toLocaleDateString('en-US', opts) + '</time>';
+  } else {
+    el.textContent = 'No interactions yet';
+  }
+}
+
+// ─── SEARCH ──────────────────────────────────────────────────────────────────
+function handleSearch() {
+  const query = document.getElementById('searchBox').value.trim().toLowerCase();
+  const sections = document.querySelectorAll('.section');
+
+  sections.forEach(sectionEl => {
+    const items = sectionEl.querySelectorAll('.check-item');
+    let sectionHasMatch = false;
+
+    items.forEach(itemEl => {
+      const text = itemEl.querySelector('.item-text').textContent.toLowerCase();
+      if (!query || text.includes(query)) {
+        itemEl.classList.remove('search-hidden');
+        sectionHasMatch = true;
+        // highlight
+        if (query) {
+          highlightText(itemEl.querySelector('.item-text'), query);
+        } else {
+          removeHighlights(itemEl.querySelector('.item-text'));
+        }
+      } else {
+        itemEl.classList.add('search-hidden');
+        removeHighlights(itemEl.querySelector('.item-text'));
+      }
+    });
+
+    // Also check callouts
+    const callouts = sectionEl.querySelectorAll('.callout');
+    callouts.forEach(c => {
+      if (!query || c.textContent.toLowerCase().includes(query)) {
+        c.style.display = '';
+        if (!query) sectionHasMatch = true;
+        else sectionHasMatch = true;
+      } else {
+        // Only hide if parent item is hidden
+      }
+    });
+
+    if (!query || sectionHasMatch) {
+      sectionEl.classList.remove('search-hidden');
+      // auto-expand when searching
+      if (query) {
+        const body = sectionEl.querySelector('.section-body');
+        const header = sectionEl.querySelector('.section-header');
+        body.classList.remove('collapsed');
+        header.classList.remove('collapsed');
+      }
+    } else {
+      sectionEl.classList.add('search-hidden');
+    }
+  });
+}
+
+function highlightText(el, query) {
+  // Remove existing highlights first, work with stored original HTML
+  if (!el.dataset.originalHtml) {
+    el.dataset.originalHtml = el.innerHTML;
+  }
+  const original = el.dataset.originalHtml;
+  // Simple case-insensitive highlight that avoids HTML tags
+  const regex = new RegExp('(?![^<]*>)(' + escapeRegex(query) + ')', 'gi');
+  el.innerHTML = original.replace(regex, '<span class="highlight">$1</span>');
+}
+
+function removeHighlights(el) {
+  if (el.dataset.originalHtml) {
+    el.innerHTML = el.dataset.originalHtml;
+    delete el.dataset.originalHtml;
+  }
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+// Default all sections to expanded on first load
+if (Object.keys(state.collapsed).length === 0) {
+  SECTIONS.forEach(s => { state.collapsed['section-' + s.num] = false; });
+  saveState();
+}
+render();
+</script>
+</body>
+</html>

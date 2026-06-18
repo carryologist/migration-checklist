@@ -1,0 +1,10 @@
+{
+  "name": "Homelab Migration Checklist",
+  "short_name": "Migration",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "description": "Interactive checklist for ATX → SFF custom water loop migration",
+  "icons": []
+}
